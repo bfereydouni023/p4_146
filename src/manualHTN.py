@@ -94,6 +94,9 @@ pyhop.declare_methods('produce', produce)
 def punch_for_wood(state, ID):
 	return [('op_punch_for_wood', ID)]
 
+def craft_wood_via_axe(state, ID):
+	return [('have_enough', ID, 'wooden_axe', 1), ('op_wooden_axe_for_wood', ID)]
+
 def wooden_axe_for_wood(state, ID):
 	if state.wooden_axe[ID] < 1:
 		return False
@@ -111,7 +114,7 @@ def craft_stick(state, ID):
 def craft_bench(state, ID):
 	return [('have_enough', ID, 'plank', 4), ('op_craft_bench', ID)]
 
-pyhop.declare_methods('produce_wood', wooden_axe_for_wood, punch_for_wood)
+pyhop.declare_methods('produce_wood', craft_wood_via_axe, wooden_axe_for_wood, punch_for_wood)
 pyhop.declare_methods('produce_plank', craft_plank)
 pyhop.declare_methods('produce_stick', craft_stick)
 pyhop.declare_methods('produce_bench', craft_bench)
