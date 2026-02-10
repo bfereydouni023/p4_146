@@ -37,10 +37,12 @@ def produce_batch(state, ID, item, num):
 			[('op_wooden_pickaxe_for_cobble', ID)] * 3 +
 			[('have_enough', ID, 'bench', 1), ('have_enough', ID, 'stick', 2), ('op_craft_stone_pickaxe_at_bench', ID)] +
 			[('op_stone_pickaxe_for_cobble', ID)] * need)
+	# Use stone pickaxe paths to keep mining branches deterministic and fast.
 	if item == 'coal':
 		return [('have_enough', ID, 'stone_pickaxe', 1)] + [('op_stone_pickaxe_for_coal', ID)] * need
 	if item == 'ore':
 		return [('have_enough', ID, 'stone_pickaxe', 1)] + [('op_stone_pickaxe_for_ore', ID)] * need
+	# Smelting is expanded in bulk once coal/ore requirements are established.
 	if item == 'ingot':
 		return [('have_enough', ID, 'furnace', 1), ('have_enough', ID, 'coal', need), ('have_enough', ID, 'ore', need)] + [('op_smelt_ore_in_furnace', ID)] * need
 	if item == 'rail':
@@ -135,6 +137,7 @@ def declare_methods(data):
 		'stone_pickaxe': ['craft stone_pickaxe at bench'],
 		'furnace': ['craft furnace at bench'],
 		'cobble': ['wooden_pickaxe for cobble', 'stone_pickaxe for cobble'],
+		# Restrict these to stone-pickaxe recipes to avoid slow cyclic alternatives.
 		'coal': ['stone_pickaxe for coal'],
 		'ore': ['stone_pickaxe for ore'],
 		'ingot': ['smelt ore in furnace'],
