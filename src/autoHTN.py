@@ -12,12 +12,14 @@ def produce_enough(state, ID, item, num):
 	return [('produce', ID, item), ('have_enough', ID, item, num)]
 
 
+# Batch method for quantity-heavy resources to reduce recursion depth.
 def produce_batch(state, ID, item, num):
 	have = getattr(state, item)[ID]
 	need = num - have
 	if need <= 0:
 		return []
 
+	# For each item type, expand to a compact sequence of subtasks/operators.
 	if item == 'wood':
 		return [('op_punch_for_wood', ID)] * need
 	if item == 'plank':
@@ -55,6 +57,7 @@ def _normalize_name(name):
 	return name.replace(' ', '_')
 
 
+# Convert one JSON recipe into an HTN method (requirements + consume + operator).
 def make_method(name, rule):
 	def method(state, ID):
 		subtasks = []
@@ -69,6 +72,7 @@ def make_method(name, rule):
 	return method
 
 
+# Convert one JSON recipe into a primitive operator with precondition checks.
 def make_operator(rule):
 	def operator(state, ID):
 		if state.time[ID] < rule['Time']:
@@ -94,6 +98,7 @@ def make_operator(rule):
 	return operator
 
 
+# Programmatically build/declare every operator from crafting.json.
 def declare_operators(data):
 	operators = []
 	for recipe_name, rule in data['Recipes'].items():
@@ -104,6 +109,7 @@ def declare_operators(data):
 	pyhop.declare_operators(*operators)
 
 
+# Programmatically build/declare methods from crafting.json recipes.
 def declare_methods(data):
 	# Build methods from recipes programmatically.
 	generated = {}
@@ -112,7 +118,7 @@ def declare_methods(data):
 		method = make_method(_normalize_name(recipe_name), rule)
 		generated.setdefault(product, {})[recipe_name] = method
 
-	# Limit to a compact, acyclic recipe set that solves assignment cases quickly.
+	# Ordered recipe preference avoids expensive or cyclic alternatives.
 	recipe_order = {
 		'wood': ['punch for wood'],
 		'plank': ['craft plank'],
@@ -141,6 +147,7 @@ def declare_methods(data):
 		pyhop.declare_methods('produce_{}'.format(product), *methods.values())
 
 
+# Pruning hook used by pyhop to cut obvious dead-end/cyclic branches.
 def add_heuristic(data, ID):
 	tools = set(data['Tools'])
 	repeatable = {'wood', 'plank', 'stick', 'cobble', 'coal', 'ore', 'ingot', 'rail'}
@@ -171,6 +178,7 @@ def add_heuristic(data, ID):
 	pyhop.add_check(heuristic)
 
 
+# Optional runtime method reordering hook (kept identity for determinism).
 def define_ordering(data, ID):
 	def reorder_methods(state, curr_task, tasks, plan, depth, calling_stack, methods):
 		return methods
@@ -178,6 +186,7 @@ def define_ordering(data, ID):
 	pyhop.define_ordering(reorder_methods)
 
 
+# Build a pyhop state object from Problem/Items/Tools JSON sections.
 def set_up_state(data, ID):
 	state = pyhop.State('state')
 	setattr(state, 'time', {ID: data['Problem']['Time']})
@@ -194,6 +203,7 @@ def set_up_state(data, ID):
 	return state
 
 
+# Translate Goal JSON entries into top-level have_enough tasks.
 def set_up_goals(data, ID):
 	goals = []
 	for item, num in data['Problem']['Goal'].items():

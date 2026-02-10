@@ -18,6 +18,7 @@ def op_craft_wooden_axe_at_bench(state, ID):
 		return state
 	return False
 
+# Fast wood-gathering operator once an axe exists.
 def op_wooden_axe_for_wood(state, ID):
 	if state.time[ID] >= 2 and state.wooden_axe[ID] >= 1:
 		state.wood[ID] += 1
@@ -25,6 +26,7 @@ def op_wooden_axe_for_wood(state, ID):
 		return state
 	return False
 
+# Crafting primitives used to bootstrap bench/tools.
 def op_craft_plank(state, ID):
 	if state.time[ID] >= 1 and state.wood[ID] >= 1:
 		state.plank[ID] += 4
@@ -67,6 +69,7 @@ def check_enough(state, ID, item, num):
 def produce_enough(state, ID, item, num):
 	return [('produce', ID, item), ('have_enough', ID, item, num)]
 
+# Route generic 'produce' tasks to item-specific subtasks.
 def produce(state, ID, item):
 	if item == 'wood': 
 		return [('produce_wood', ID)]
@@ -94,6 +97,7 @@ pyhop.declare_methods('produce', produce)
 def punch_for_wood(state, ID):
 	return [('op_punch_for_wood', ID)]
 
+# Prefer getting an axe first so later wood production is cheaper.
 def craft_wood_via_axe(state, ID):
 	return [('have_enough', ID, 'wooden_axe', 1), ('op_wooden_axe_for_wood', ID)]
 
@@ -102,6 +106,7 @@ def wooden_axe_for_wood(state, ID):
 		return False
 	return [('op_wooden_axe_for_wood', ID)]
 
+# Decompose wooden-axe crafting into required ingredients then operator.
 def craft_wooden_axe_at_bench(state, ID):
 	return [('have_enough', ID, 'bench', 1), ('have_enough', ID, 'stick', 2), ('have_enough', ID, 'plank', 3), ('op_craft_wooden_axe_at_bench', ID)]
 
@@ -122,6 +127,7 @@ pyhop.declare_methods('produce_wooden_axe', craft_wooden_axe_at_bench)
 
 '''end recipe methods'''
 
+# Scenario required by the rubric: start from empty inventory with 46 time.
 # declare state
 state = pyhop.State('state')
 state.wood = {'agent': 0}
