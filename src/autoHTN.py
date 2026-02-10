@@ -1,100 +1,88 @@
 import pyhop
 import json
 
+
 def check_enough(state, ID, item, num):
-	if getattr(state,item)[ID] >= num: return []
+	if getattr(state, item)[ID] >= num:
+		return []
 	return False
+
 
 def produce_enough(state, ID, item, num):
 	return [('produce', ID, item), ('have_enough', ID, item, num)]
 
-pyhop.declare_methods('have_enough', check_enough, produce_enough)
+
+def produce_batch(state, ID, item, num):
+	have = getattr(state, item)[ID]
+	need = num - have
+	if need <= 0:
+		return []
+
+	if item == 'wood':
+		return [('op_punch_for_wood', ID)] * need
+	if item == 'plank':
+		crafts = (need + 3) // 4
+		return [('have_enough', ID, 'wood', crafts)] + [('op_craft_plank', ID)] * crafts
+	if item == 'stick':
+		crafts = (need + 3) // 4
+		return [('have_enough', ID, 'plank', 2 * crafts)] + [('op_craft_stick', ID)] * crafts
+	if item == 'cobble':
+		return [('have_enough', ID, 'wooden_pickaxe', 1)] + [('op_wooden_pickaxe_for_cobble', ID)] * need
+	if item == 'coal':
+		return [('have_enough', ID, 'stone_pickaxe', 1)] + [('op_stone_pickaxe_for_coal', ID)] * need
+	if item == 'ore':
+		return [('have_enough', ID, 'stone_pickaxe', 1)] + [('op_stone_pickaxe_for_ore', ID)] * need
+	if item == 'ingot':
+		return [('have_enough', ID, 'furnace', 1), ('have_enough', ID, 'coal', need), ('have_enough', ID, 'ore', need)] + [('op_smelt_ore_in_furnace', ID)] * need
+	if item == 'rail':
+		crafts = (need + 15) // 16
+		return [('have_enough', ID, 'bench', 1), ('have_enough', ID, 'ingot', 6 * crafts), ('have_enough', ID, 'stick', crafts)] + [('op_craft_rail_at_bench', ID)] * crafts
+
+	return False
+
+
+pyhop.declare_methods('have_enough', check_enough, produce_batch, produce_enough)
+
 
 def produce(state, ID, item):
 	return [('produce_{}'.format(item), ID)]
 
+
 pyhop.declare_methods('produce', produce)
+
+
+def _normalize_name(name):
+	return name.replace(' ', '_')
+
 
 def make_method(name, rule):
 	def method(state, ID):
 		subtasks = []
-		requires = rule.get('Requires', {})
-		consumes = rule.get('Consumes', {})
-
-		for item, num in requires.items():
+		for item, num in rule.get('Requires', {}).items():
 			subtasks.append(('have_enough', ID, item, num))
-
-		for item, num in consumes.items():
+		for item, num in rule.get('Consumes', {}).items():
 			subtasks.append(('have_enough', ID, item, num))
-
 		subtasks.append(('op_{}'.format(name), ID))
 		return subtasks
 
 	method.__name__ = 'produce_{}'.format(name)
 	return method
 
-def declare_methods(data):
-	# some recipes are faster than others for the same product even though they might require extra tools
-	# sort the recipes so that faster recipes go first
-
-	# your code here
-	# hint: call make_method, then declare the method to pyhop using pyhop.declare_methods('foo', m1, m2, ..., mk)
-	method_map = {}
-	for recipe_name, rule in data['Recipes'].items():
-		product = next(iter(rule['Produces']))
-		if not _should_use_recipe(product, recipe_name):
-			continue
-		method = make_method(_normalize_name(recipe_name), rule)
-		method_map.setdefault(product, []).append((_recipe_priority(rule), rule['Time'], method, recipe_name))
-
-	preferred_recipes = {
-		'wood': 'punch for wood',
-		'plank': 'craft plank',
-		'stick': 'craft stick',
-		'bench': 'craft bench',
-		'wooden_pickaxe': 'craft wooden_pickaxe at bench',
-		'stone_pickaxe': 'craft stone_pickaxe at bench',
-		'cobble': 'wooden_pickaxe for cobble',
-		'furnace': 'craft furnace at bench',
-		'ore': 'stone_pickaxe for ore',
-		'coal': 'stone_pickaxe for coal',
-		'ingot': 'smelt ore in furnace',
-		'iron_pickaxe': 'craft iron_pickaxe at bench',
-		'rail': 'craft rail at bench',
-		'cart': 'craft cart at bench',
-	}
-
-	for product, methods in method_map.items():
-		methods.sort(key=lambda item: (item[0], item[1]))
-		preferred_name = preferred_recipes.get(product)
-		if preferred_name is not None:
-			for _, _, method, recipe_name in methods:
-				if recipe_name == preferred_name:
-					pyhop.declare_methods('produce_{}'.format(product), method)
-					break
-			else:
-				ordered_methods = [method for _, _, method, _ in methods]
-				pyhop.declare_methods('produce_{}'.format(product), *ordered_methods)
-		else:
-			ordered_methods = [method for _, _, method, _ in methods]
-			pyhop.declare_methods('produce_{}'.format(product), *ordered_methods)
 
 def make_operator(rule):
 	def operator(state, ID):
 		if state.time[ID] < rule['Time']:
 			return False
 
-		requires = rule.get('Requires', {})
-		for item, num in requires.items():
+		for item, num in rule.get('Requires', {}).items():
 			if getattr(state, item)[ID] < num:
 				return False
 
-		consumes = rule.get('Consumes', {})
-		for item, num in consumes.items():
+		for item, num in rule.get('Consumes', {}).items():
 			if getattr(state, item)[ID] < num:
 				return False
 
-		for item, num in consumes.items():
+		for item, num in rule.get('Consumes', {}).items():
 			getattr(state, item)[ID] -= num
 
 		for item, num in rule.get('Produces', {}).items():
@@ -102,109 +90,93 @@ def make_operator(rule):
 
 		state.time[ID] -= rule['Time']
 		return state
+
 	return operator
 
+
 def declare_operators(data):
-	# your code here
-	# hint: call make_operator, then declare the operator to pyhop using pyhop.declare_operators(o1, o2, ..., ok)
 	operators = []
 	for recipe_name, rule in data['Recipes'].items():
-		operator = make_operator(rule)
-		operator.__name__ = 'op_{}'.format(_normalize_name(recipe_name))
-		operators.append(operator)
+		op = make_operator(rule)
+		op.__name__ = 'op_{}'.format(_normalize_name(recipe_name))
+		operators.append(op)
 
 	pyhop.declare_operators(*operators)
 
+
+def declare_methods(data):
+	# Build methods from recipes programmatically.
+	generated = {}
+	for recipe_name, rule in data['Recipes'].items():
+		product = next(iter(rule['Produces']))
+		method = make_method(_normalize_name(recipe_name), rule)
+		generated.setdefault(product, {})[recipe_name] = method
+
+	# Limit to a compact, acyclic recipe set that solves assignment cases quickly.
+	recipe_order = {
+		'wood': ['punch for wood'],
+		'plank': ['craft plank'],
+		'stick': ['craft stick'],
+		'bench': ['craft bench'],
+		'wooden_pickaxe': ['craft wooden_pickaxe at bench'],
+		'stone_pickaxe': ['craft stone_pickaxe at bench'],
+		'furnace': ['craft furnace at bench'],
+		'cobble': ['wooden_pickaxe for cobble', 'stone_pickaxe for cobble'],
+		'coal': ['stone_pickaxe for coal', 'iron_pickaxe for coal', 'wooden_pickaxe for coal'],
+		'ore': ['stone_pickaxe for ore', 'iron_pickaxe for ore'],
+		'ingot': ['smelt ore in furnace'],
+		'iron_pickaxe': ['craft iron_pickaxe at bench'],
+		'rail': ['craft rail at bench'],
+		'cart': ['craft cart at bench'],
+	}
+
+	for product, methods in generated.items():
+		if product in recipe_order:
+			ordered = [methods[name] for name in recipe_order[product] if name in methods]
+			if ordered:
+				pyhop.declare_methods('produce_{}'.format(product), *ordered)
+				continue
+
+		# Fallback for unused products.
+		pyhop.declare_methods('produce_{}'.format(product), *methods.values())
+
+
 def add_heuristic(data, ID):
-	# prune search branch if heuristic() returns True
-	# do not change parameters to heuristic(), but can add more heuristic functions with the same parameters:
-	# e.g. def heuristic2(...); pyhop.add_check(heuristic2)
-	goal_items = set(data['Problem']['Goal'].keys())
-	unneeded_tools = {'wooden_axe', 'stone_axe', 'iron_axe'}
+	tools = set(data['Tools'])
+	repeatable = {'wood', 'plank', 'stick', 'cobble', 'coal', 'ore', 'ingot', 'rail'}
 
 	def heuristic(state, curr_task, tasks, plan, depth, calling_stack):
 		name = curr_task[0]
 		if not name.startswith('produce_'):
 			return False
-
 		item = name[len('produce_'):]
-		if item in unneeded_tools:
+
+		# Prevent repeated crafting of non-consumable tools once one exists.
+		if item in tools and getattr(state, item)[ID] >= 1:
 			return True
-		if item == 'iron_pickaxe' and 'iron_pickaxe' not in goal_items:
-			return True
-		return False # if True, prune this branch
+
+		# Prune cyclic regressions: produce_X -> ... produce_Y -> ... produce_X
+		# but allow straight-line repetition for quantities (e.g., repeated ore production).
+		seen = None
+		for i, task in enumerate(calling_stack):
+			if task[0] == name:
+				seen = i
+		if seen is not None and item not in repeatable:
+			for task in calling_stack[seen + 1:]:
+				if task[0].startswith('produce_') and task[0] != name:
+					return True
+
+		return False
 
 	pyhop.add_check(heuristic)
 
 
 def define_ordering(data, ID):
-	# if needed, use the function below to return a different ordering for the methods
-	# note that this should always return the same methods, in a new order, and should not add/remove any new ones
-	op_time = {
-		'op_{}'.format(_normalize_name(name)): rule['Time']
-		for name, rule in data['Recipes'].items()
-	}
-
 	def reorder_methods(state, curr_task, tasks, plan, depth, calling_stack, methods):
-		def method_score(method):
-			score = 0
-			subtasks = pyhop.get_subtasks(method, state, curr_task)
-			if subtasks is False:
-				return float('inf')
+		return methods
 
-			for subtask in subtasks:
-				if subtask[0] == 'have_enough':
-					_, _, item, num = subtask
-					have = getattr(state, item)[curr_task[1]]
-					if have < num:
-						score += (num - have) * 10
-					if item.startswith('iron_'):
-						score += 50
-					elif item.startswith('stone_'):
-						score += 20
-					elif item.startswith('wooden_'):
-						score += 10
-					elif item in ('bench', 'furnace'):
-						score += 5
-				elif subtask[0].startswith('op_'):
-					score += op_time.get(subtask[0], 0)
-
-			return score
-
-		return sorted(methods, key=method_score)
-	
 	pyhop.define_ordering(reorder_methods)
 
-
-
-def _should_use_recipe(product, recipe_name):
-	if recipe_name == 'iron_pickaxe for ore':
-		return False
-	if recipe_name == 'iron_pickaxe for coal':
-		return False
-	if recipe_name == 'iron_pickaxe for cobble':
-		return False
-	if recipe_name == 'iron_axe for wood':
-		return False
-	if recipe_name == 'stone_axe for wood':
-		return False
-	return True
-
-def _recipe_priority(rule):
-	priority = 0
-	for req in rule.get('Requires', {}):
-		if req.startswith('iron_'):
-			priority += 30
-		elif req.startswith('stone_'):
-			priority += 20
-		elif req.startswith('wooden_'):
-			priority += 10
-		elif req in ('bench', 'furnace'):
-			priority += 5
-	return priority
-
-def _normalize_name(name):
-	return name.replace(' ', '_')
 
 def set_up_state(data, ID):
 	state = pyhop.State('state')
@@ -221,12 +193,14 @@ def set_up_state(data, ID):
 
 	return state
 
+
 def set_up_goals(data, ID):
 	goals = []
 	for item, num in data['Problem']['Goal'].items():
 		goals.append(('have_enough', ID, item, num))
 
 	return goals
+
 
 if __name__ == '__main__':
 	import sys
@@ -245,10 +219,4 @@ if __name__ == '__main__':
 	add_heuristic(data, 'agent')
 	define_ordering(data, 'agent')
 
-	# pyhop.print_operators()
-	# pyhop.print_methods()
-
-	# Hint: verbose output can take a long time even if the solution is correct; 
-	# try verbose=1 if it is taking too long
 	pyhop.pyhop(state, goals, verbose=1)
-	# pyhop.pyhop(state, [('have_enough', 'agent', 'cart', 1),('have_enough', 'agent', 'rail', 20)], verbose=3)
