@@ -1,6 +1,6 @@
 # HTN Planner Notes
 
-Laurelai worked on the code for setting up the functionality of the HTN and Behnood (Ben) worked on the heuristic planning. We worked together through the whole project, this was just how we split the initial work.
+Lorelai worked on the code for setting up the functionality of the HTN and Behnood (Ben) worked on the heuristic planning. We worked together through the whole project, this was just how we split the initial work.
 
 ## Heuristic
 
